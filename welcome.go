@@ -104,11 +104,34 @@ func (i *iconHoverLayout) Layout(_ []fyne.CanvasObject, size fyne.Size) {
 	i.content.Resize(size)
 
 	i.icon.Resize(fyne.NewSize(64, 64))
-	i.icon.Move(fyne.NewPos(size.Width - i.icon.Size().Width, 0))
+	i.icon.Move(fyne.NewPos(size.Width-i.icon.Size().Width, 0))
 }
 
 func (i *iconHoverLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	return i.content.MinSize()
+}
+
+func (w *welcome) installer(win fyne.Window) func() {
+	return func() {
+		if w.shownPkg == "fyne.io/apps" {
+			dialog.ShowInformation("System app", "Cannot overwrite the installer app", win)
+			return
+		}
+
+		prog := dialog.NewProgressInfinite("Downloading...", "Please wait while the app is installed", win)
+		prog.Show()
+		get := commands.NewGetter()
+		tmpIcon := downloadIcon(w.shownIcon)
+		get.SetIcon(tmpIcon)
+		err := get.Get(w.shownPkg)
+		prog.Hide()
+		if err != nil {
+			dialog.ShowError(err, win)
+		} else {
+			dialog.ShowInformation("Installed", "App was installed successfully :)", win)
+		}
+		os.Remove(tmpIcon)
+	}
 }
 
 func loadWelcome(apps AppList, win fyne.Window) fyne.CanvasObject {
@@ -136,43 +159,27 @@ func loadWelcome(apps AppList, win fyne.Window) fyne.CanvasObject {
 		&widget.FormItem{Text: "Summary", Widget: w.summary},
 		&widget.FormItem{Text: "Date", Widget: dateAndVersion},
 	)
-	details := fyne.NewContainerWithLayout(&iconHoverLayout{content:form, icon:w.icon}, form, w.icon)
 
-	list := widget.NewList(func() int {
-		return len(apps)
-	},
-	func() fyne.CanvasObject {
-		return widget.NewLabel("A longish app name")
-	},
-	func(id int, obj fyne.CanvasObject) {
-		obj.(*widget.Label).SetText(apps[id].Name)
-	})
+	details := fyne.NewContainerWithLayout(&iconHoverLayout{content: form, icon: w.icon}, form, w.icon)
+
+	list := widget.NewList(
+		func() int {
+			return len(apps)
+		},
+		func() fyne.CanvasObject {
+			return widget.NewLabel("A longish app name")
+		},
+		func(id int, obj fyne.CanvasObject) {
+			obj.(*widget.Label).SetText(apps[id].Name)
+		},
+	)
 	list.OnSelected = func(id int) {
 		w.loadAppDetail(apps[id])
 	}
 
 	buttons := container.NewHBox(
 		layout.NewSpacer(),
-		widget.NewButton("Install", func() {
-			if w.shownPkg == "fyne.io/apps" {
-				dialog.ShowInformation("System app", "Cannot overwrite the installer app", win)
-				return
-			}
-
-			prog := dialog.NewProgressInfinite("Downloading...", "Please wait while the app is installed", win)
-			prog.Show()
-			get := commands.NewGetter()
-			tmpIcon := downloadIcon(w.shownIcon)
-			get.SetIcon(tmpIcon)
-			err := get.Get(w.shownPkg)
-			prog.Hide()
-			if err != nil {
-				dialog.ShowError(err, win)
-			} else {
-				dialog.ShowInformation("Installed", "App was installed successfully :)", win)
-			}
-			os.Remove(tmpIcon)
-		}),
+		widget.NewButton("Install", w.installer(win)),
 	)
 
 	if len(apps) > 0 {
@@ -189,18 +196,26 @@ func downloadIcon(url string) string {
 		fyne.LogError("Failed to access icon url: "+url, err)
 		return ""
 	}
-	tmp := filepath.Join(os.TempDir(), "Fyne-Icon.png")
+
+	tmp, err := ioutil.TempFile(os.TempDir(), "fyne-icon-*.png")
+	if err != nil {
+		fyne.LogError("Failed to create temporary file", err)
+		return ""
+	}
+	defer tmp.Close()
+
 	data, err := ioutil.ReadAll(req.Body)
+
 	if err != nil {
 		fyne.LogError("Failed tread icon data", err)
 		return ""
 	}
 
-	err = ioutil.WriteFile(tmp, data, 0666)
+	_, err = tmp.Write(data)
 	if err != nil {
-		fyne.LogError("Failed to get write icon to: "+tmp, err)
+		fyne.LogError("Failed to get write icon to: "+tmp.Name(), err)
 		return ""
 	}
 
-	return tmp
+	return tmp.Name()
 }

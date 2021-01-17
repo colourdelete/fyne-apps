@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -19,7 +20,7 @@ type App struct {
 	Date    time.Time
 	Version string
 
-	Source AppSource
+	Source   AppSource
 	Requires string
 }
 
@@ -38,6 +39,7 @@ func parseAppList(reader io.Reader) (AppList, error) {
 
 	appList := AppList{}
 	err := decode.Decode(&appList)
+
 	if err != nil {
 		return nil, err
 	}
@@ -51,12 +53,20 @@ func parseAppList(reader io.Reader) (AppList, error) {
 }
 
 func loadAppListFromWeb() (io.ReadCloser, error) {
-	res, err := http.Get("https://apps.fyne.io/api/v1/list.json")
+	timeout := 1 * time.Second
+	_, cancel := context.WithTimeout(context.Background(), timeout)
+
+	defer cancel()
+
+	req, err := http.NewRequest("GET", "https://apps.fyne.io/api/v1/list.json", nil)
+
 	if err != nil {
 		return nil, err
 	}
 
-	return res.Body, nil
+	defer req.Body.Close()
+
+	return req.Body, err
 }
 
 // TODO make actual cache read()
