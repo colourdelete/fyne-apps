@@ -5,7 +5,6 @@
 *.so
 *.dylib
 
-apps
 apps.app
 apps.exe
 apps.tar.gz
