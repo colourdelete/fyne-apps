@@ -9,7 +9,7 @@ import (
 
 func main() {
 	app := app.New()
-	win := app.NewWindow("Fyne Applications")
+	win := app.NewWindow("Fyne Apps")
 
 	data, err := apps.LoadAppListFromWeb()
 	if err != nil {

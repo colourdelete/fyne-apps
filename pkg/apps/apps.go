@@ -1,6 +1,7 @@
 package apps
 
 import (
+	"fmt"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -117,32 +118,34 @@ func (i *iconHoverLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	return i.content.MinSize()
 }
 
-func (w *Apps) installer(win fyne.Window) func() {
+func (w *Apps) installer(win fyne.Window, progBar *widget.ProgressBarInfinite, progLabel *widget.Label) func() {
 	return func() {
-		if w.shownPkg == "fyne.io/apps" {
+		shownPkg := w.shownPkg
+		shownIcon := w.shownIcon
+		if shownPkg == "fyne.io/apps" {
 			dialog.ShowInformation("System app", "Cannot overwrite the installer app", win)
 			return
 		}
 
-		prog := dialog.NewProgressInfinite("Installing...", "Please wait while the app is installed", win)
-		prog.Show()
+		progLabel.SetText(fmt.Sprintf("Installing %s...", shownPkg))
+		progBar.Start()
+		defer progBar.Stop()
 
 		tmpIconChan := make(chan string)
 		go func() {
-			tmpIconChan <- downloadIcon(w.shownIcon)
+			tmpIconChan <- downloadIcon(shownIcon)
 		}()
 
 		tmpIcon := <-tmpIconChan
 		get := commands.NewGetter()
 		get.SetIcon(tmpIcon)
-		err := get.Get(w.shownPkg)
-
-		prog.Hide()
+		err := get.Get(shownPkg)
 
 		if err != nil {
+			progLabel.SetText(err.Error())
 			dialog.ShowError(err, win)
 		} else {
-			dialog.ShowInformation("Installed", "App was installed successfully :)", win)
+			progLabel.SetText(fmt.Sprintf("Installed %s.", shownPkg))
 		}
 
 		err = os.Remove(tmpIcon)
@@ -195,17 +198,29 @@ func NewApps(apps AppList, win fyne.Window) fyne.CanvasObject {
 		w.loadAppDetail(apps[id])
 	}
 
+	progBar := widget.NewProgressBarInfinite()
+	progBar.Stop() // TODO: allow loading other apps while installing
+
+	progLabel := widget.NewLabel("Loading...")
 	buttons := container.NewHBox(
 		layout.NewSpacer(),
-		widget.NewButton("Install", w.installer(win)),
+		progBar,
+		progLabel,
+		widget.NewButton("Install", w.installer(win, progBar, progLabel)),
 	)
+	progLabel.SetText("Ready.")
 
 	if len(apps) > 0 {
 		w.loadAppDetail(apps[0])
 	}
 	content := container.NewBorder(details, nil, nil, nil, w.screenshot)
-	return container.NewBorder(nil, nil, list, nil,
-		container.NewBorder(nil, buttons, nil, nil, content))
+	return container.NewBorder(
+		nil,
+		nil,
+		list,
+		nil,
+		container.NewBorder(nil, buttons, nil, nil, content),
+	)
 }
 
 func downloadIcon(url string) string {
